@@ -1,0 +1,102 @@
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+import org.json.JSONObject;
+import org.json.JSONArray;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+import java.io.InputStream;
+import java.util.*;
+
+public class SAXXMLtoJSON {
+
+    private static final Set<String> VALID_FIELDS = Set.of(
+        "name", "postalZip", "region", "country", "address", "list"
+    );
+
+    public static void main(String[] args) {
+        try {
+            Scanner scanner = new Scanner(System.in);
+            System.out.println("Available fields: " + String.join(", ", VALID_FIELDS));
+            System.out.print("Enter fields to include in JSON (comma-separated): ");
+            String input = scanner.nextLine();
+
+            Set<String> selectedFields = new HashSet<>();
+            for (String field : input.trim().split("\\s*,\\s*")) {
+                if (VALID_FIELDS.contains(field)) {
+                    selectedFields.add(field);
+                } else if (!field.isBlank()) {
+                    System.out.println("⚠️ Ignored invalid field: " + field);
+                }
+            }
+
+            if (selectedFields.isEmpty()) {
+                System.out.println("❌ No valid fields selected. Exiting...");
+                return;
+            }
+
+            InputStream inputStream = SAXXMLtoJSON.class.getClassLoader().getResourceAsStream("data.xml");
+            if (inputStream == null) {
+                System.out.println("❌ Could not find data.xml in resources folder.");
+                return;
+            }
+
+            SAXParserFactory factory = SAXParserFactory.newInstance();
+            SAXParser saxParser = factory.newSAXParser();
+            JSONHandler handler = new JSONHandler(selectedFields);
+            saxParser.parse(inputStream, handler);
+
+            System.out.println("\n✅ JSON Output:");
+            System.out.println(handler.getJsonArray().toString(2));
+
+        } catch (Exception e) {
+            System.out.println("❌ Error: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    static class JSONHandler extends DefaultHandler {
+        private final Set<String> selectedFields;
+        private JSONArray jsonArray = new JSONArray();
+        private JSONObject currentRecord;
+        private StringBuilder currentValue;
+        private String currentElement;
+
+        public JSONHandler(Set<String> selectedFields) {
+            this.selectedFields = selectedFields;
+        }
+
+        public JSONArray getJsonArray() {
+            return jsonArray;
+        }
+
+        @Override
+        public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
+            if ("record".equalsIgnoreCase(qName)) {
+                currentRecord = new JSONObject();
+            } else if (selectedFields.contains(qName)) {
+                currentElement = qName;
+                currentValue = new StringBuilder();
+            }
+        }
+
+        @Override
+        public void characters(char[] ch, int start, int length) throws SAXException {
+            if (currentValue != null) {
+                currentValue.append(ch, start, length);
+            }
+        }
+
+        @Override
+        public void endElement(String uri, String localName, String qName) throws SAXException {
+            if ("record".equalsIgnoreCase(qName)) {
+                jsonArray.put(currentRecord);
+            } else if (selectedFields.contains(qName) && currentElement != null) {
+                currentRecord.put(currentElement, currentValue.toString().trim());
+                currentElement = null;
+                currentValue = null;
+            }
+        }
+    }
+}
